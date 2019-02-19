@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Ландшафтний дизайн</title>
+    <style>
+      body {  
+        margin: auto;
+        overflow: hidden;
+      }
+    </style>
+    <script src="js/Three.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    <script src="js/KeyboardState.js"></script>
+    <script src="js/ShaderWater.js"></script>
+    <script src="js/ParticleEngine.js"></script>
+    <script src="js/ParticleEngineFountain.js"></script>
+    <script src="js/Stats.js"></script>
+    <script src='js/DAT.GUI.min.js'></script>
+  
+    <!-- jQuery code to display an information button and box when clicked. -->
+    <script src="js/jquery-1.9.1.js"></script>
+    <script src="js/jquery-ui.js"></script>
+    <link rel=stylesheet href="css/jquery-ui.css" />
+    <link rel=stylesheet href="css/info.css"/>
+    <script src="js/info.js"></script>
+    <div id="infoButton"></div>
+    <div id="infoBox" title="Ландшафтний дизайн">
+    <h1 align="center" style="font-size:110%;">Управління:</h1>
+    1 - Запустити мельницю.<br>
+    2 - Запустити вертоліт.<br>
+    3 - Запустити фонтан.<br>
+    4,5,6,7 - Змінити позицію освітлення.<br>
+    R/F - Підняти/опустити вертоліт.<br>
+    W/S - Рухати веротоліт вперед/назад.<br>
+    A/D - Повернути вертоліт вліво/вправо.<br>
+    Q/E - Рухати вертоліт в лівий/правий бік.<br><br>
+    <div align="center" style="font-size:105%;">Copyright &copy; 2015, <b>Sergey Tovt</b></div>
+    </div>
+    <!-- ------------------------------------------------------------ -->
+  
+<script>
+
+//Глобальні змінні    
+var scene, renderer, light;
+var loader;
+var mill2, helicopter1, helicopter2, helicopter3, helicopter4, windmill2;
+
+var mill_rot = false;
+var helicopter_rot = false;
+var fountain_run = false;
+var light_rot = false;
+
+var keyboard = new KeyboardState();
+var clock = new THREE.Clock();
+
+function initScene() { 
+  //Створюємо сцену і встановлюємо її розмір
+  scene = new THREE.Scene();
+  var WIDTH = window.innerWidth,
+  HEIGHT = window.innerHeight;
+
+  //Створюємо рендерер і додаємо його в DOM
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(WIDTH, HEIGHT);
+  document.body.appendChild(renderer.domElement);
+  
+  //Створюємо камеру та додаємо на сцену
+  camera = new THREE.PerspectiveCamera(45, WIDTH / HEIGHT, 0.1, 20000);
+  camera.position.set(0,600,-1350);
+  scene.add(camera);
+  
+  //Створюємо подію listener, яка змінює розміри рендера з вікном браузера
+  window.addEventListener('resize', function() {
+    var WIDTH = window.innerWidth,
+    HEIGHT = window.innerHeight;
+    renderer.setSize(WIDTH, HEIGHT);
+    camera.aspect = WIDTH / HEIGHT;
+    camera.updateProjectionMatrix();
+  });
+
+  //Встановлюємо колір фону сцени
+  renderer.setClearColor(0xffffff, 1);
+        
+  //Створюємо освітлення, задаємо позицію та додаємо на сцену
+  light = new THREE.DirectionalLight( 0xffffff, 1.4 );
+  light.position.set(1300,650,-1100);
+  light.target.position.set( 200, 0,300 );
+
+  light.shadowCameraLeft = -1450;
+  light.shadowCameraRight = 1550;
+  light.shadowDarkness = 0.7;
+  light.shadowMapWidth = 2048;
+  light.shadowMapHeight = 2048;
+  light.castShadow = true;
+  // light.shadowCameraVisible = true;
+  scene.add( light );
+  
+  //FPS
+  stats = new Stats();
+  stats.domElement.style.position = 'absolute';
+  stats.domElement.style.bottom = '0px';
+  stats.domElement.style.zIndex = 100;
+  document.body.appendChild( stats.domElement );
+  
+  //----------------------------------------------------------------//  
+  //-----------------------------SKYBOX-----------------------------//
+  //----------------------------------------------------------------//
+  
+  // хелпер координат
+  // var axes = new THREE.AxisHelper(1000);
+  // scene.add( axes );
+  
+  var imagePrefix = "images/";
+  var directions  = ["posx", "negx", "posy", "negy", "posz", "negz"];
+  var imageSuffix = ".jpg";
+  var skyGeometry = new THREE.CubeGeometry( 4000, 3000, 4000 ); //лывоправо,verx,передзад
+  
+  var materialArray = [];
+  for (var i = 0; i < 6; i++)
+    materialArray.push( new THREE.MeshBasicMaterial({
+      map: THREE.ImageUtils.loadTexture( imagePrefix + directions[i] + imageSuffix ),
+      side: THREE.BackSide
+    }));
+    
+  var skyMaterial = new THREE.MeshFaceMaterial( materialArray );
+  var skyBox = new THREE.Mesh( skyGeometry, skyMaterial );
+  skyBox.position.set(0,0,300);
+  scene.add( skyBox );
+  
+  
+  //----------------------------------------------------------------//
+  //------------------------------ЗЕМЛЯ-----------------------------//
+  //----------------------------------------------------------------//
+  
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/ground.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 13, 13 );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var ground = new THREE.Mesh( geometry, material );
+    ground.position.set(0,0,0);
+    ground.scale.set(0.3,0.3,0.3);
+    ground.receiveShadow = true;
+    scene.add(ground);
+    }
+  );
+  
+  
+  //----------------------------------------------------------------//
+  //---------------------------БУДИНОК 1----------------------------//
+  //----------------------------------------------------------------//
+  
+  //Стіни
+  loader = new THREE.JSONLoader();
+  loader.load('models/housewall1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/housewall.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var housewall1 = new THREE.Mesh( geometry, material );
+    housewall1.position.set(0,0,0);
+    housewall1.scale.set(0.3,0.3,0.3);
+    housewall1.receiveShadow = true;
+    housewall1.castShadow = true;
+    scene.add(housewall1);
+    }
+  );
+    
+  //Дах
+  loader = new THREE.JSONLoader();
+  loader.load('models/housetop1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/housetop.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var housetop1 = new THREE.Mesh( geometry, material );
+    housetop1.position.set(0,0,0);
+    housetop1.scale.set(0.3,0.3,0.3); 
+    housetop1.receiveShadow = true;
+    housetop1.castShadow = true;
+    scene.add(housetop1);
+    }
+  );
+
+  //Ступеньки 1 і 2
+  loader = new THREE.JSONLoader();
+  loader.load('models/stairs1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/stairs1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set(2,2);
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var stairs1 = new THREE.Mesh( geometry, material );
+    stairs1.position.set(0,0,0);
+    stairs1.scale.set(0.3,0.3,0.3);
+    stairs1.castShadow = true; 
+    stairs1.receiveShadow = true;
+    scene.add(stairs1);
+    }
+  );
+    
+  //Ступеньки 3
+  loader = new THREE.JSONLoader();
+  loader.load('models/stairs2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/stairs2.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var stairs2 = new THREE.Mesh( geometry, material );
+    stairs2.position.set(0,0,0);
+    stairs2.scale.set(0.3,0.3,0.3);
+    stairs2.castShadow = true; 
+    stairs2.receiveShadow = true;
+    scene.add(stairs2);
+    }
+  );
+  
+  //Балкон
+  loader = new THREE.JSONLoader();
+  loader.load('models/balcony.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/marble.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set(2,2);
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var balcony = new THREE.Mesh( geometry, material );
+    balcony.position.set(0,0,0);
+    balcony.scale.set(0.3,0.3,0.3); 
+    balcony.receiveShadow = true;
+    scene.add(balcony);
+    }
+  );
+    
+
+  //Рами вікон
+  loader = new THREE.JSONLoader();
+  loader.load('models/windows1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 20, 20 );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var windows1 = new THREE.Mesh( geometry, material );
+    windows1.position.set(0,0,0);
+    windows1.scale.set(0.3,0.3,0.3); 
+    windows1.receiveShadow = true;
+    windows1.castShadow = true; 
+    scene.add(windows1);
+    }
+  );
+
+  //Скло вікон
+  loader = new THREE.JSONLoader();
+  loader.load('models/windows2.js', function ( geometry, materials ) {
+    var material = new THREE.MeshLambertMaterial( { color:0xdae85d,opacity:0.55}); 
+    material.transparent=true;
+    var windows2 = new THREE.Mesh( geometry, material );
+    windows2.position.set(0,0,0);
+    windows2.scale.set(0.3,0.3,0.3); 
+    windows2.receiveShadow = true; 
+    windows2.castShadow = true; 
+    scene.add(windows2);
+    }
+  );
+  
+  
+  //----------------------------------------------------------------//
+  //-------------------ЛАНДШАФТ БіЛЯ БУЛИНКУ 1----------------------//
+  //----------------------------------------------------------------//
+    
+  //Огородження
+  loader = new THREE.JSONLoader();
+  loader.load('models/fence.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/fence.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var fence = new THREE.Mesh( geometry, material );
+    fence.position.set(0,0,0);
+    fence.scale.set(0.3,0.3,0.3);
+    fence.castShadow = true;
+    fence.receiveShadow = true;
+    scene.add(fence);
+    }
+  );
+    
+  //Доріжка біля будинку 1 і стежка
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite2.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 3,3 );
+    var material = new THREE.MeshLambertMaterial( { map : texture } );
+    var ground1 = new THREE.Mesh( geometry, material );
+    ground1.position.set(0,0,0);
+    ground1.scale.set(0.3,0.3,0.3); 
+    ground1.receiveShadow = true;
+    scene.add(ground1);
+    }
+  );
+  
+  //Доріжка біля будинку 2
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/fence.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    var ground2 = new THREE.Mesh( geometry, material );
+    ground2.position.set(0,0,0);
+    ground2.scale.set(0.3,0.3,0.3);
+    ground2.receiveShadow = true;
+    scene.add(ground2);
+    }
+  );
+  
+  //Квіти біля доріжки
+  loader = new THREE.JSONLoader();
+  loader.load('models/flower.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/flower.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} ); 
+    var flower1 = new THREE.Mesh( geometry, material );
+    flower1.position.set(0,0,0);
+    flower1.scale.set(0.3,0.3,0.3); 
+    flower1.receiveShadow = true; 
+    flower1.castShadow = true; 
+    scene.add(flower1);
+    var flower2 = new THREE.Mesh( geometry, material );
+    flower2.position.set(0,0,-45);
+    flower2.scale.set(0.3,0.3,0.3); 
+    flower2.receiveShadow = true; 
+    flower2.castShadow = true; 
+    scene.add(flower2);
+    var flower3 = new THREE.Mesh( geometry, material );
+    flower3.position.set(0,0,-95);
+    flower3.scale.set(0.3,0.3,0.3); 
+    flower3.receiveShadow = true; 
+    flower3.castShadow = true; 
+    scene.add(flower3);
+    var flower4 = new THREE.Mesh( geometry, material );
+    flower4.position.set(0,0,-140);
+    flower4.scale.set(0.3,0.3,0.3); 
+    flower4.receiveShadow = true; 
+    flower4.castShadow = true; 
+    scene.add(flower4);
+    var flower5 = new THREE.Mesh( geometry, material );
+    flower5.position.set(0,0,-190);
+    flower5.scale.set(0.3,0.3,0.3); 
+    flower5.receiveShadow = true; 
+    flower5.castShadow = true; 
+    scene.add(flower5);
+    var flower6 = new THREE.Mesh( geometry, material );
+    flower6.position.set(0,0,-235);
+    flower6.scale.set(0.3,0.3,0.3); 
+    flower6.receiveShadow = true; 
+    flower6.castShadow = true; 
+    scene.add(flower6);
+    var flower7 = new THREE.Mesh( geometry, material );
+    flower7.position.set(0,0,-280);
+    flower7.scale.set(0.3,0.3,0.3); 
+    flower7.receiveShadow = true; 
+    flower7.castShadow = true; 
+    scene.add(flower7);
+    var flower8 = new THREE.Mesh( geometry, material );
+    flower8.position.set(-110,0,0);
+    flower8.scale.set(0.3,0.3,0.3); 
+    flower8.receiveShadow = true; 
+    flower8.castShadow = true; 
+    scene.add(flower8);
+    var flower9 = new THREE.Mesh( geometry, material );
+    flower9.position.set(-110,0,-45);
+    flower9.scale.set(0.3,0.3,0.3); 
+    flower9.receiveShadow = true; 
+    flower9.castShadow = true; 
+    scene.add(flower9);
+    var flower10 = new THREE.Mesh( geometry, material );
+    flower10.position.set(-110,0,-95);
+    flower10.scale.set(0.3,0.3,0.3); 
+    flower10.receiveShadow = true; 
+    flower10.castShadow = true; 
+    scene.add(flower10);
+    var flower11 = new THREE.Mesh( geometry, material );
+    flower11.position.set(-110,0,-140);
+    flower11.scale.set(0.3,0.3,0.3); 
+    flower11.receiveShadow = true; 
+    flower11.castShadow = true; 
+    scene.add(flower11);
+    var flower12 = new THREE.Mesh( geometry, material );
+    flower12.position.set(-110,0,-190);
+    flower12.scale.set(0.3,0.3,0.3); 
+    flower12.receiveShadow = true; 
+    flower12.castShadow = true; 
+    scene.add(flower12);
+    var flower13 = new THREE.Mesh( geometry, material );
+    flower13.position.set(-110,0,-235);
+    flower13.scale.set(0.3,0.3,0.3); 
+    flower13.receiveShadow = true; 
+    flower13.castShadow = true; 
+    scene.add(flower13);
+    var flower14 = new THREE.Mesh( geometry, material );
+    flower14.position.set(-110,0,-280);
+    flower14.scale.set(0.3,0.3,0.3); 
+    flower14.receiveShadow = true; 
+    flower14.castShadow = true; 
+    scene.add(flower14);
+    }
+  );  
+  
+  
+  //----------------------------------------------------------------//
+  //------------------------------ОЗЕРО-----------------------------//
+  //----------------------------------------------------------------//
+    
+  //Огорожа 3 біля озера
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground3.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/asphalt.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 10, 10 );
+    var material = new THREE.MeshLambertMaterial( { map : texture } );
+    var ground3 = new THREE.Mesh( geometry, material );
+    ground3.position.set(0,0,0);
+    ground3.scale.set(0.3,0.3,0.3); 
+    ground3.receiveShadow = true; 
+    scene.add(ground3);
+    }
+  );
+    
+  //Огорожа 2 біля озера
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground4.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/marble.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 35, 35 );
+    var material = new THREE.MeshLambertMaterial( { map : texture } );
+    var ground4 = new THREE.Mesh( geometry, material );
+    ground4.position.set(0,0,0);
+    ground4.scale.set(0.3,0.3,0.3); 
+    ground4.receiveShadow = true; 
+    scene.add(ground4);
+    }
+  );
+  
+  //Огорожа 1 біля озера
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground5.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 14,14 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground5 = new THREE.Mesh( geometry, material );
+    ground5.position.set(0,0,0);
+    ground5.scale.set(0.3,0.3,0.3); 
+    ground5.receiveShadow = true; 
+    scene.add(ground5);
+    }
+  );
+  
+  //Дно озера
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground6.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/pool.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 14,14 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground6 = new THREE.Mesh( geometry, material );
+    ground6.position.set(0,0,0);
+    ground6.scale.set(0.3,0.3,0.3); 
+    scene.add(ground6);
+    }
+  );
+  
+  //Фонтан в озері
+  loader = new THREE.JSONLoader();
+  loader.load('models/fountain.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 3,3 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var fountain = new THREE.Mesh( geometry, material );
+    fountain.position.set(630,0,-70);
+    fountain.scale.set(0.3,0.3,0.3);
+    scene.add(fountain);
+    }
+  );
+    
+  //Лавиці біля озера
+  loader = new THREE.JSONLoader();
+  loader.load('models/bench1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/bench.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture } ); 
+    //Лавиця 1
+    var bench1 = new THREE.Mesh( geometry, material );
+    bench1.position.set(0,0,0);
+    bench1.scale.set(0.3,0.3,0.3); 
+    bench1.receiveShadow = true; 
+    bench1.castShadow = true; 
+    scene.add(bench1);
+    //Лавиця 2
+    var bench2 = new THREE.Mesh( geometry, material );
+    bench2.position.set(673,0,-345);
+    bench2.scale.set(0.3,0.3,0.3); 
+    bench2.rotation.y = -3.55;
+    bench2.receiveShadow = true; 
+    bench2.castShadow = true; 
+    scene.add(bench2);
+    }
+  );
+  
+  
+  //----------------------------------------------------------------//
+  //-----------------------------ФОНАРІ-----------------------------//
+  //----------------------------------------------------------------//  
+  
+  //Опори фонарів біля дому
+  loader = new THREE.JSONLoader();
+  loader.load('models/lantern1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/fence.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} ); 
+    var lantern1 = new THREE.Mesh( geometry, material );
+    lantern1.position.set(0,0,0);
+    lantern1.scale.set(0.3,0.3,0.3); 
+    lantern1.receiveShadow = true; 
+    scene.add(lantern1);
+    }
+  );
+  
+  //Опори фонарів біля озера
+  loader = new THREE.JSONLoader();
+  loader.load('models/lantern2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/fence.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} ); 
+    var lantern2 = new THREE.Mesh( geometry, material );
+    lantern2.position.set(0,0,0);
+    lantern2.scale.set(0.3,0.3,0.3); 
+    lantern2.receiveShadow = true; 
+    lantern2.castShadow = true; 
+    scene.add(lantern2);
+    }
+  );
+  
+  //Опори фонарів кругом озера
+  loader = new THREE.JSONLoader();
+  loader.load('models/lantern3.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/stairs1.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} ); 
+    var lantern3 = new THREE.Mesh( geometry, material );
+    lantern3.position.set(0,0,0);
+    lantern3.scale.set(0.3,0.3,0.3); 
+    lantern3.castShadow = true;
+    lantern3.receiveShadow = true; 
+    scene.add(lantern3);
+    }
+  );
+  
+  //Лампочки у всіх фонарях
+  loader = new THREE.JSONLoader();
+  loader.load('models/lamps.js', function ( geometry, materials ) {
+    var material = new THREE.MeshBasicMaterial( { color:0xdae85d,opacity:0.85});  
+    material.transparent=true;
+    var lamps = new THREE.Mesh( geometry, material );
+    lamps.position.set(0,0,0);
+    lamps.scale.set(0.3,0.3,0.3); 
+    lamps.receiveShadow = true; 
+    lamps.castShadow = true; 
+    scene.add(lamps);
+    }
+  );
+
+
+  //----------------------------------------------------------------//
+  //-------------------ЛАНДШАФТ БіЛЯ БУЛИНКУ 2----------------------//
+  //----------------------------------------------------------------//  
+  //Річка біля будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground7.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/river.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 35,35 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground7 = new THREE.Mesh( geometry, material );
+    ground7.position.set(0,0,0);
+    ground7.scale.set(0.3,0.3,0.3); 
+    ground7.receiveShadow = true; 
+    scene.add(ground7);
+    }
+  );
+  
+  //Плитка біля будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground8.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/marble.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;       
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground8 = new THREE.Mesh( geometry, material );
+    ground8.position.set(0,0,0);
+    ground8.scale.set(0.3,0.3,0.3); 
+    ground8.receiveShadow = true; 
+    scene.add(ground8);
+    }
+  );
+  
+  //Лавиці  біля будинку
+
+  //Верх лавиць біля будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/bench2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var bench3 = new THREE.Mesh( geometry, material );
+    bench3.position.set(0,0,0);
+    bench3.scale.set(0.3,0.3,0.3); 
+    bench3.receiveShadow = true; 
+    bench3.castShadow = true; 
+    scene.add(bench3);
+    }
+  );
+
+  //Верхня опора лавиць біля будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/bench3.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/river.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var bench4 = new THREE.Mesh( geometry, material );
+    bench4.position.set(0,0,0);
+    bench4.scale.set(0.3,0.3,0.3); 
+    bench4.receiveShadow = true; 
+    bench4.castShadow = true; 
+    scene.add(bench4);
+    }
+  );
+
+  //Нижня опора лавиць біля будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/bench4.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite2.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 3,3 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var bench5 = new THREE.Mesh( geometry, material );
+    bench5.position.set(0,0,0);
+    bench5.scale.set(0.3,0.3,0.3); 
+    bench5.receiveShadow = true; 
+    bench5.castShadow = true; 
+    scene.add(bench5);
+    }
+  );
+    
+  //Кругла стежка біля будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground9.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite2.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 5,5 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground9 = new THREE.Mesh( geometry, material );
+    ground9.position.set(0,0,0);
+    ground9.scale.set(0.3,0.3,0.3); 
+    ground9.receiveShadow = true; 
+    scene.add(ground9);
+    }
+  );
+  
+  //Доріжка біля будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground10.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/asphalt.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 2,2 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground10 = new THREE.Mesh( geometry, material );
+    ground10.position.set(0,0,0);
+    ground10.scale.set(0.3,0.3,0.3); 
+    ground10.receiveShadow = true; 
+    scene.add(ground10);
+    }
+  );
+  
+  //Мельниця
+
+  //Опора мельниці
+  loader = new THREE.JSONLoader();
+  loader.load('models/mill1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var mill1 = new THREE.Mesh( geometry, material );
+    mill1.position.set(0,0,0);
+    mill1.scale.set(0.3,0.3,0.3); 
+    mill1.receiveShadow = true; 
+    mill1.castShadow = true; 
+    scene.add(mill1);
+    }
+  );
+    
+  //Круг мельниці
+  loader = new THREE.JSONLoader();
+  loader.load('models/mill2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    mill2 = new THREE.Mesh( geometry, material );
+    mill2.position.set(-650,14,-595);
+    mill2.scale.set(0.3,0.3,0.3); 
+    mill2.receiveShadow = true; 
+    mill2.castShadow = true; 
+    scene.add(mill2);
+    }
+  );
+  
+  
+  //----------------------------------------------------------------//
+  //---------------------------БУДИНОК 2----------------------------//
+  //----------------------------------------------------------------//
+
+  //Дах будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housetop2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/roof1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var housetop2 = new THREE.Mesh( geometry, material );
+    housetop2.position.set(0,0,0);
+    housetop2.scale.set(0.3,0.3,0.3); 
+    housetop2.castShadow = true; 
+    scene.add(housetop2);
+    }
+  );
+  
+  //Під дахом будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housetop3.js', function ( geometry, materials ) {
+    var material = new THREE.MeshLambertMaterial( { color:0x870000} );
+    var housetop3 = new THREE.Mesh( geometry, material );
+    housetop3.position.set(0,0,0);
+    housetop3.scale.set(0.3,0.3,0.3); 
+    housetop3.receiveShadow = true; 
+    housetop3.castShadow = true; 
+    scene.add(housetop3);
+    }
+  );
+  
+  //Верхня опора будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housewall2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite2.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var housewall2 = new THREE.Mesh( geometry, material );
+    housewall2.position.set(0,0,0);
+    housewall2.scale.set(0.3,0.3,0.3); 
+    housewall2.receiveShadow = true; 
+    housewall2.castShadow = true; 
+    scene.add(housewall2);
+    }
+  );
+  
+  //Нижня опора будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housewall3.js', function ( geometry, materials ) {
+    var material = new THREE.MeshLambertMaterial( { color:0x870000} );
+    var housewall3 = new THREE.Mesh( geometry, material );
+    housewall3.position.set(0,0,0);
+    housewall3.scale.set(0.3,0.3,0.3); 
+    housewall3.receiveShadow = true; 
+    housewall3.castShadow = true; 
+    scene.add(housewall3);
+    }
+  );
+  
+  //Плитка в будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground11.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/stairs1.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground11 = new THREE.Mesh( geometry, material );
+    ground11.position.set(0,0,0);
+    ground11.scale.set(0.3,0.3,0.3); 
+    ground11.receiveShadow = true; 
+    scene.add(ground11);
+    }
+  );
+  
+
+  //----------------------------------------------------------------//
+  //---------------------------БУДИНОК 3----------------------------//
+  //----------------------------------------------------------------//    
+  
+  //Низ 1 будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground12.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/asphalt.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 2,2 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground12 = new THREE.Mesh( geometry, material );
+    ground12.position.set(0,0,0);
+    ground12.scale.set(0.3,0.3,0.3); 
+    ground12.receiveShadow = true; 
+    scene.add(ground12);
+    }
+  );
+  
+  //Низ 2 будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground13.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/stairs1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 5,5 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground13 = new THREE.Mesh( geometry, material );
+    ground13.position.set(0,0,0);
+    ground13.scale.set(0.3,0.3,0.3); 
+    ground13.receiveShadow = true; 
+    scene.add(ground13);
+    }
+  );
+  
+  //Опора будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housewall4.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var housewall4 = new THREE.Mesh( geometry, material );
+    housewall4.position.set(0,0,0);
+    housewall4.scale.set(0.3,0.3,0.3); 
+    housewall4.receiveShadow = true; 
+    housewall4.castShadow = true; 
+    scene.add(housewall4);
+    }
+  );
+    
+  //Дах будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housetop4.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/roof1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set(2,2);
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var housetop4 = new THREE.Mesh( geometry, material );
+    housetop4.position.set(0,0,0);
+    housetop4.scale.set(0.3,0.3,0.3); 
+    housetop4.castShadow = true; 
+    scene.add(housetop4);
+    }
+  );  
+  
+  
+  //----------------------------------------------------------------//
+  //---------------------------БУДИНОК 4----------------------------//
+  //----------------------------------------------------------------//
+  
+  //Сходи будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground14.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/asphalt.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 5,5 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground14 = new THREE.Mesh( geometry, material );
+    ground14.position.set(0,0,0);
+    ground14.scale.set(0.3,0.3,0.3); 
+    ground14.receiveShadow = true; 
+    scene.add(ground14);
+    }
+  );
+  
+  //Низ будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground15.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/pool.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 10,10 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground15 = new THREE.Mesh( geometry, material );
+    ground15.position.set(0,0,0);
+    ground15.scale.set(0.3,0.3,0.3); 
+    ground15.receiveShadow = true; 
+    ground15.castShadow = true; 
+    scene.add(ground15);
+    }
+  );
+  
+  //Нижня опора будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housewall5.js', function ( geometry, materials ) {
+    var material = new THREE.MeshLambertMaterial( { color:0x242424} );
+    var housewall5 = new THREE.Mesh( geometry, material );
+    housewall5.position.set(0,0,0);
+    housewall5.scale.set(0.3,0.3,0.3); 
+    housewall5.receiveShadow = true; 
+    housewall5.castShadow = true; 
+    scene.add(housewall5);
+    }
+  );
+    
+  //Середня опора будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housewall6.js', function ( geometry, materials ) {
+    var material = new THREE.MeshLambertMaterial( { color:0x870000} );
+    var housewall6 = new THREE.Mesh( geometry, material );
+    housewall6.position.set(0,0,0);
+    housewall6.scale.set(0.3,0.3,0.3); 
+    housewall6.receiveShadow = true; 
+    housewall6.castShadow = true; 
+    scene.add(housewall6);
+    }
+  );
+  
+  //Нижня опора будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housewall7.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 5,5 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var housewall7 = new THREE.Mesh( geometry, material );
+    housewall7.position.set(0,0,0);
+    housewall7.scale.set(0.3,0.3,0.3); 
+    housewall7.receiveShadow = true; 
+    housewall7.castShadow = true; 
+    scene.add(housewall7);
+    }
+  );
+    
+  //Дах будинку
+  loader = new THREE.JSONLoader();
+  loader.load('models/housetop5.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/roof1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set(2,2);
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var housetop5 = new THREE.Mesh( geometry, material );
+    housetop5.position.set(0,0,0);
+    housetop5.scale.set(0.3,0.3,0.3); 
+    housetop5.receiveShadow = true; 
+    housetop5.castShadow = true; 
+    scene.add(housetop5);
+    }
+  );
+
+
+  //----------------------------------------------------------------//
+  //----------------------------ЛАНДШАФТ----------------------------//
+  //----------------------------------------------------------------//  
+
+  //Мости
+
+  //Опора 1 моста 1 і міст 2
+  loader = new THREE.JSONLoader();
+  loader.load('models/bridge1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var bridge1 = new THREE.Mesh( geometry, material );
+    bridge1.position.set(0,0,0);
+    bridge1.scale.set(0.3,0.3,0.3); 
+    bridge1.receiveShadow = true; 
+    bridge1.castShadow = true; 
+    scene.add(bridge1);
+    }
+  );
+
+  //Доріжка моста 1
+  loader = new THREE.JSONLoader();
+  loader.load('models/bridge2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set(3,3);
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var bridge2 = new THREE.Mesh( geometry, material );
+    bridge2.position.set(0,0,0);
+    bridge2.scale.set(0.3,0.3,0.3); 
+    bridge2.receiveShadow = true; 
+    scene.add(bridge2);
+    }
+  );
+
+  //Опора 2 моста 1
+  loader = new THREE.JSONLoader();
+  loader.load('models/bridge3.js', function ( geometry, materials ) {
+    var material = new THREE.MeshBasicMaterial( { color:0x66ffff,opacity:0.3}); 
+    material.transparent=true;
+    var bridge3 = new THREE.Mesh( geometry, material );
+    bridge3.position.set(0,0,0);
+    bridge3.scale.set(0.3,0.3,0.3); 
+    bridge3.receiveShadow = true; 
+    bridge3.castShadow = true; 
+    scene.add(bridge3);
+    }
+  );
+  
+  //Альтанки
+  //Опора альтанки
+  loader = new THREE.JSONLoader();
+  loader.load('models/arbor1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/wood.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set(10,10);
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var arbor1 = new THREE.Mesh( geometry, material );
+    arbor1.position.set(0,0,0);
+    arbor1.scale.set(0.3,0.3,0.3);
+    arbor1.castShadow = true;
+    arbor1.receiveShadow = true;
+    scene.add(arbor1);
+    }
+  );
+
+  //Дах альтанки
+  loader = new THREE.JSONLoader();
+  loader.load('models/arbor2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/roof2.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set(2,2);
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var arbor2 = new THREE.Mesh( geometry, material );
+    arbor2.position.set(0,0,0);
+    arbor2.scale.set(0.3,0.3,0.3);
+    arbor2.castShadow = true;
+    arbor2.receiveShadow = true;
+    scene.add(arbor2);
+    }
+  );
+
+  //Стільці альтанки
+  loader = new THREE.JSONLoader();
+  loader.load('models/arbor3.js', function ( geometry, materials ) {
+    var material = new THREE.MeshLambertMaterial( { color:0xcd392f} );
+    var arbor3 = new THREE.Mesh( geometry, material );
+    arbor3.position.set(0,0,0);
+    arbor3.scale.set(0.3,0.3,0.3);
+    arbor3.castShadow = true;
+    arbor3.receiveShadow = true;
+    scene.add(arbor3);
+    }
+  );  
+  
+  //Каміння
+  loader = new THREE.JSONLoader();
+  loader.load('models/stone.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/granite1.jpg" );
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; 
+    texture.repeat.set( 15,15 );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var stone = new THREE.Mesh( geometry, material );
+    stone.position.set(0,0,0);
+    stone.scale.set(0.3,0.3,0.3);
+    stone.receiveShadow = true; 
+    stone.castShadow = true; 
+    scene.add(stone);
+    }
+  );  
+
+  //Вертоліт
+
+  //Посадочна площадка і сходи на посадочну площадку для вертольоту
+  loader = new THREE.JSONLoader();
+  loader.load('models/ground16.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/helipad.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var ground16 = new THREE.Mesh( geometry, material );
+    ground16.position.set(0,0,0);
+    ground16.scale.set(0.3,0.3,0.3); 
+    ground16.receiveShadow = true; 
+    ground16.castShadow = true; 
+    scene.add(ground16);
+    }
+  );
+
+  //Верхній гвинт вертольоту
+  loader = new THREE.JSONLoader();
+  loader.load('models/helicopter1.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/helicopter.png" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    helicopter1 = new THREE.Mesh( geometry, material );
+    helicopter1.position.set(1017,62,812);
+    helicopter1.scale.set(0.3,0.3,0.3); 
+    helicopter1.receiveShadow = true; 
+    helicopter1.castShadow = true; 
+    scene.add(helicopter1);
+    }
+  );
+
+  //Корпус вертольоту
+  loader = new THREE.JSONLoader();
+  loader.load('models/helicopter2.js', function ( geometry, materials ) {
+    var texture = THREE.ImageUtils.loadTexture( "models/helicopter.png" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    helicopter2 = new THREE.Mesh( geometry, material );
+    helicopter2.position.set(1017,62,812);
+    helicopter2.scale.set(0.3,0.3,0.3); 
+    helicopter2.receiveShadow = true; 
+    helicopter2.castShadow = true; 
+    scene.add(helicopter2);
+    }
+  );
+
+  //Передні вікна вертольоту 1
+  loader = new THREE.JSONLoader();
+  loader.load('models/helicopter3.js', function ( geometry, materials ) {
+    var material = new THREE.MeshBasicMaterial( { color:0x0092ff,opacity:0.55}); 
+    material.transparent=true;
+    helicopter3 = new THREE.Mesh( geometry, material );
+    helicopter3.position.set(1017,62,812);
+    helicopter3.scale.set(0.3,0.3,0.3); 
+    helicopter3.receiveShadow = true; 
+    helicopter3.castShadow = true; 
+    scene.add(helicopter3);
+    }
+  );
+
+  //Передні вікна вертольоту 2
+  loader = new THREE.JSONLoader();
+  loader.load('models/helicopter4.js', function ( geometry, materials ) {
+    var material = new THREE.MeshBasicMaterial( { color:0x0092ff,opacity:0.55}); 
+    material.transparent=true;
+    helicopter4 = new THREE.Mesh( geometry, material );
+    helicopter4.position.set(1017,62,812);
+    helicopter4.scale.set(0.3,0.3,0.3); 
+    helicopter4.receiveShadow = true; 
+    helicopter4.castShadow = true; 
+    scene.add(helicopter4);
+    }
+  ); 
+  
+  //Дерева
+  loader = new THREE.JSONLoader();
+  loader.load('models/tree.js', function ( geometry, materials ) {
+  var texture = THREE.ImageUtils.loadTexture( "models/tree.jpg" );
+    var material = new THREE.MeshLambertMaterial( { map : texture} );
+    var tree1 = new THREE.Mesh( geometry, material );
+    tree1.position.set(-160,0,-600);
+    tree1.scale.set(0.3,0.3,0.3);
+    tree1.receiveShadow = true; 
+    tree1.castShadow = true; 
+    scene.add(tree1);
+    var tree2 = new THREE.Mesh( geometry, material );
+    tree2.position.set(-150,0,-900);
+    tree2.scale.set(0.3,0.3,0.3);
+    tree2.receiveShadow = true; 
+    tree2.castShadow = true; 
+    scene.add(tree2);
+    var tree3 = new THREE.Mesh( geometry, material );
+    tree3.position.set(-350,0,-830);
+    tree3.scale.set(0.3,0.3,0.3);
+    tree3.receiveShadow = true; 
+    tree3.castShadow = true; 
+    scene.add(tree3);
+    var tree4 = new THREE.Mesh( geometry, material );
+    tree4.position.set(-620,0,-900);
+    tree4.scale.set(0.3,0.3,0.3);
+    tree4.receiveShadow = true; 
+    tree4.castShadow = true; 
+    scene.add(tree4);
+    var tree5 = new THREE.Mesh( geometry, material );
+    tree5.position.set(-810,0,-815);
+    tree5.scale.set(0.3,0.3,0.3);
+    tree5.receiveShadow = true; 
+    tree5.castShadow = true; 
+    scene.add(tree5);
+    var tree6 = new THREE.Mesh( geometry, material );
+    tree6.position.set(-810,0,-510);
+    tree6.scale.set(0.3,0.3,0.3);
+    tree6.receiveShadow = true; 
+    tree6.castShadow = true; 
+    scene.add(tree6);
+    var tree7 = new THREE.Mesh( geometry, material );
+    tree7.position.set(-550,0,-510);
+    tree7.scale.set(0.3,0.3,0.3);
+    tree7.receiveShadow = true; 
+    tree7.castShadow = true; 
+    scene.add(tree7);
+    var tree8 = new THREE.Mesh( geometry, material );
+    tree8.position.set(-730,0,-630);
+    tree8.scale.set(0.3,0.3,0.3);
+    tree8.receiveShadow = true; 
+    tree8.castShadow = true; 
+    scene.add(tree8);
+    var tree9 = new THREE.Mesh( geometry, material );
+    tree9.position.set(-340,0,-500);
+    tree9.scale.set(0.3,0.3,0.3);
+    tree9.receiveShadow = true; 
+    tree9.castShadow = true; 
+    scene.add(tree9);
+    }
+  );
+
+
+  //----------------------------------------------------------------//
+  //-------------------------------ВОДА-----------------------------//
+  //----------------------------------------------------------------//
+
+  var noiseTexture = new THREE.ImageUtils.loadTexture( 'images/cloud.png' );
+  noiseTexture.wrapS = noiseTexture.wrapT = THREE.RepeatWrapping; 
+
+  // MIRORR plane
+  verticalMirror = new THREE.FlatMirror(renderer, camera, {
+    clipBias: 0.003, 
+    textureWidth: 800, textureHeight: 600, 
+    color:0x333366, 
+    baseTexture: THREE.ImageUtils.loadTexture("images/water.jpg"),
+    baseSpeed: 1.15,
+    noiseTexture: noiseTexture,
+    noiseScale: 0.2,
+    alpha:  0.8,
+    time:   0.0,
+  });
+  
+  //Басейн
+  this.verticalMirrorMesh1 = new THREE.Mesh(
+    new THREE.PlaneGeometry(900, 800, 150, 150), 
+    verticalMirror.material 
+  );
+  verticalMirrorMesh1.add(verticalMirror);
+  verticalMirrorMesh1.position.set(500,-40,0);
+  verticalMirrorMesh1.rotation.x = -90 * Math.PI / 180; 
+  scene.add(verticalMirrorMesh1); 
+        
+  //Річка
+  this.verticalMirrorMesh2 = new THREE.Mesh(
+    new THREE.PlaneGeometry(700, 950, 150, 150), 
+    verticalMirror.material 
+  );
+  verticalMirrorMesh2.add(verticalMirror);
+  verticalMirrorMesh2.position.set(-560,-35,-180);
+  verticalMirrorMesh2.rotation.x = -90 * Math.PI / 180; 
+  scene.add(verticalMirrorMesh2); 
+    
+  //Фонтан  
+  this.engine = new ParticleEngine();
+  engine.setValues( Examples.fountain );
+  engine.initialize();
+  
+  //GUI
+  //gui 1
+  gui1 = new dat.GUI(); 
+  parameters = 
+  {
+    light1: function() { light.position.set(-1300,550,-1100); },
+    light2: function() { light.position.set(-1300,550,1100); },
+    light3: function() { light.position.set(1300,550,1100); },
+    light4: function() { light.position.set(1300,550,-1100); }      
+  };
+
+  gui1.add( parameters, 'light1' ).name("Освітлення 1");
+  gui1.add( parameters, 'light2' ).name("Освітлення 2");
+  gui1.add( parameters, 'light3' ).name("Освітлення 3");
+  gui1.add( parameters, 'light4' ).name("Освітлення 4");
+  
+  gui1.open();  
+  
+  //gui 2
+  gui2 = new dat.GUI(); 
+  parameters = 
+  {
+    mill:   function() { mill_rot = true;  },
+    helicopter: function() { helicopter_rot = true; },
+    fountain: function() { fountain_run = true; }   
+  };
+
+  gui2.add( parameters, 'mill'   ).name("Мельниця");
+  gui2.add( parameters, 'helicopter' ).name("Вертоліт");
+  gui2.add( parameters, 'fountain' ).name("Фонтан");
+  
+  gui2.open();  
+  
+  
+  // Рендер тіней
+  renderer.shadowMapEnabled = true;
+  renderer.shadowMapSoft = true;
+  
+  
+  // Add OrbitControls so that we can pan around with the mouse.
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+}
+
+function animateScene() {
+  requestAnimationFrame(animateScene);
+  //позиція гвинта
+  if (helicopter1 && helicopter2) {
+    helicopter1.position = helicopter2.position;
+  }
+  verticalMirror.render();
+  renderScene();    
+  update();
+}
+
+function key () { 
+  //Запуск обертання мельниці
+  if ( keyboard.pressed("1") ) {
+    mill_rot = true;
+  }
+  if (mill_rot) {
+  mill2.rotation.z -= 0.03;
+  }
+  
+  //Запуск обертання гвинта вертольту
+  if ( keyboard.pressed("2") ) {
+    helicopter_rot = true;
+  }
+  if (helicopter_rot) {
+  helicopter1.rotation.y += 0.6;
+  } 
+  
+  //Зміна позиції освітлення
+  if ( keyboard.pressed("4") ) {
+    light.position.set(-1300,550,-1100);
+  }
+  if ( keyboard.pressed("5") ) {
+    light.position.set(-1300,550,1100);
+  }
+  if ( keyboard.pressed("6") ) {
+    light.position.set(1300,550,1100);
+  }
+  if ( keyboard.pressed("7") ) {
+    light.position.set(1300,550,-1100);
+  }
+}
+
+function update() { 
+  var delta = clock.getDelta(); // секунда
+  var moveDistance = 200 * delta; // 200 пікселів за секунду
+  var rotateAngle = Math.PI / 2 * delta; // pi/2 радіанів (90 градусів) за секунду
+
+  //Запуск води
+  verticalMirror.material.uniforms.time.value += delta;
+  
+  //Запуск фонтану
+  if ( keyboard.pressed("3") ) {
+    fountain_run = true;
+  }
+  if (fountain_run) {
+  engine.update( delta * 0.5 );
+  }
+
+  //Управління вертолітом
+  //Вперед-назад
+  if ( keyboard.pressed("W") && helicopter2.position.y > 40 && helicopter1.rotation.y > 0.1)
+  {
+    helicopter2.translateZ( -moveDistance );
+    helicopter3.translateZ( -moveDistance );
+    helicopter4.translateZ( -moveDistance );
+  }
+  if ( keyboard.pressed("S") && helicopter2.position.y > 40 && helicopter1.rotation.y > 0.1)
+  {
+    helicopter2.translateZ(  moveDistance );
+    helicopter3.translateZ(  moveDistance );
+    helicopter4.translateZ(  moveDistance );
+  }
+  //Наклони вліво-вправо
+  if ( keyboard.pressed("Q") && helicopter2.position.y > 40 && helicopter1.rotation.y > 0.1)
+  {
+    helicopter2.translateX( -moveDistance );
+    helicopter3.translateX( -moveDistance );
+    helicopter4.translateX( -moveDistance );
+  }
+  if ( keyboard.pressed("E") && helicopter2.position.y > 40 && helicopter1.rotation.y > 0.1)
+  { 
+    helicopter2.translateX(  moveDistance );
+    helicopter3.translateX(  moveDistance );
+    helicopter4.translateX(  moveDistance );
+  }
+  //Повороти вліво-вправо
+  var rotation_matrix = new THREE.Matrix4().identity();
+  if ( keyboard.pressed("A") && helicopter2.position.y > 40 && helicopter1.rotation.y > 0.1)
+  {
+    helicopter2.rotateOnAxis( new THREE.Vector3(0,1,0), rotateAngle);
+    helicopter3.rotateOnAxis( new THREE.Vector3(0,1,0), rotateAngle);
+    helicopter4.rotateOnAxis( new THREE.Vector3(0,1,0), rotateAngle);
+  }
+  if ( keyboard.pressed("D") && helicopter2.position.y > 40 && helicopter1.rotation.y > 0.1)
+  {
+    helicopter2.rotateOnAxis( new THREE.Vector3(0,1,0), -rotateAngle);
+    helicopter3.rotateOnAxis( new THREE.Vector3(0,1,0), -rotateAngle);
+    helicopter4.rotateOnAxis( new THREE.Vector3(0,1,0), -rotateAngle);
+  }
+  //Вверх-вниз
+  if ( keyboard.pressed("R") && helicopter1.rotation.y > 0.1)
+  {
+    helicopter2.translateY(3);
+    helicopter3.translateY(3);
+    helicopter4.translateY(3);
+  } 
+  if ( keyboard.pressed("F") && helicopter2.position.y > 40 && helicopter1.rotation.y > 0.1)
+  {
+    helicopter2.translateY(-3); 
+    helicopter3.translateY(-3); 
+    helicopter4.translateY(-3);
+  }   
+  
+  key();
+  controls.update();
+  keyboard.update();
+  stats.update(); 
+}
+
+function renderScene() { 
+  renderer.render( scene, camera );
+}
+
+function onLoad() {
+  initScene();
+  animateScene();
+}
+</script>
+
+  </head>
+    <body onLoad="onLoad();">
+    </body>
+</html>
